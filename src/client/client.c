@@ -43,11 +43,47 @@ static gboolean sigint_handler(gpointer user_data) {
     return G_SOURCE_REMOVE;
 }
 
+static void handle_json_message(GBytes *message) {
+    gsize length = 0;
+    const gchar *msg_data = g_bytes_get_data(message, &length);
+
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+
+    if (json_parser_load_from_data(parser, msg_data, length, &error)) {
+        JsonObject *msg = json_node_get_object(json_parser_get_root(parser));
+
+        if (!json_object_has_member(msg, "msg")) {
+            // Invalid message
+            goto out;
+        }
+
+        const gchar *msg_type = json_object_get_string_member(msg, "msg");
+        g_print("Websocket message received: %s\n", msg_type);
+
+        if (g_str_equal(msg_type, "offer")) {
+            const gchar *offer_sdp = json_object_get_string_member(msg, "sdp");
+            // process_sdp_offer(offer_sdp);
+        } else if (g_str_equal(msg_type, "candidate")) {
+            JsonObject *candidate = json_object_get_object_member(msg, "candidate");
+
+            // process_candidate(json_object_get_int_member(candidate, "sdpMLineIndex"),
+            //                   json_object_get_string_member(candidate, "candidate"));
+        }
+    } else {
+        g_debug("Error parsing message: %s", error->message);
+        g_clear_error(&error);
+    }
+
+out:
+    g_object_unref(parser);
+}
+
 static void websocket_message_cb(SoupWebsocketConnection *connection, gint type, GBytes *message, gpointer user_data) {
     switch (type) {
         case SOUP_WEBSOCKET_DATA_BINARY: {
             gsize data_size = g_bytes_get_size(message);
-            ALOGE("Received binary message, size: %lu\n", data_size);
+            ALOGE("Received binary message, size: %lu", data_size);
             break;
         }
         case SOUP_WEBSOCKET_DATA_TEXT: {
@@ -55,49 +91,17 @@ static void websocket_message_cb(SoupWebsocketConnection *connection, gint type,
             const gchar *msg_str = g_bytes_get_data(message, &length);
             ALOGE("Received text message: %s", msg_str);
 
-            // server_handle_message(MY_SERVER(user_data), connection, message);
+            // handle_json_message(message);
         } break;
         default:
             g_assert_not_reached();
     }
-    //
-    //     gsize length = 0;
-    //     const gchar *msg_data = g_bytes_get_data(message, &length);
-    //
-    //     JsonParser *parser = json_parser_new();
-    //     GError *error = NULL;
-    //
-    //     if (json_parser_load_from_data(parser, msg_data, length, &error)) {
-    //         JsonObject *msg = json_node_get_object(json_parser_get_root(parser));
-    //
-    //         if (!json_object_has_member(msg, "msg")) {
-    //             // Invalid message
-    //             goto out;
-    //         }
-    //
-    //         const gchar *msg_type = json_object_get_string_member(msg, "msg");
-    //         g_print("Websocket message received: %s\n", msg_type);
-    //
-    //         if (g_str_equal(msg_type, "offer")) {
-    //             const gchar *offer_sdp = json_object_get_string_member(msg, "sdp");
-    //             // process_sdp_offer(offer_sdp);
-    //         } else if (g_str_equal(msg_type, "candidate")) {
-    //             JsonObject *candidate = json_object_get_object_member(msg, "candidate");
-    //
-    //             // process_candidate(json_object_get_int_member(candidate, "sdpMLineIndex"),
-    //             //                   json_object_get_string_member(candidate, "candidate"));
-    //         }
-    //     } else {
-    //         g_debug("Error parsing message: %s", error->message);
-    //         g_clear_error(&error);
-    //     }
-    //
-    // out:
-    //     g_object_unref(parser);
 }
 
 static void websocket_closed_cb(SoupWebsocketConnection *connection, gint type, GBytes *message, gpointer user_data) {
     g_clear_handle_id(&ws_state.timeout_id, g_source_remove);
+
+    ALOGD("Connection closed remotely");
 }
 
 gboolean send_test_message(SoupWebsocketConnection *connection) {
@@ -106,7 +110,7 @@ gboolean send_test_message(SoupWebsocketConnection *connection) {
     if (socket_state == SOUP_WEBSOCKET_STATE_OPEN) {
         // gchar *msg_str = json_to_string(msg, TRUE);
 
-        soup_websocket_connection_send_text(connection, "Hi! from client.");
+        soup_websocket_connection_send_text(connection, "Hi! from client. Please send some binary data.");
 
         // g_free(msg_str);
     } else {

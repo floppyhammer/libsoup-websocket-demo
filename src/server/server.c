@@ -29,11 +29,12 @@ G_DEFINE_TYPE(Server, server, G_TYPE_OBJECT)
 enum {
     SIGNAL_WS_CLIENT_CONNECTED,
     SIGNAL_WS_CLIENT_DISCONNECTED,
-    SIGNAL_SDP_ANSWER,
-    SIGNAL_CANDIDATE,
+    SIGNAL_DATA_CHUNK_DESCRIPTOR,
+    SIGNAL_DATA_CHUNK,
     N_SIGNALS
 };
 
+/// Custom signals
 static guint signals[N_SIGNALS];
 
 Server *server_new() {
@@ -67,7 +68,7 @@ static void http_cb(SoupServer *server,     //
 
 #endif
 
-static void server_handle_message(Server *server, SoupWebsocketConnection *connection, GBytes *message) {
+static void server_handle_json_message(Server *server, SoupWebsocketConnection *connection, GBytes *message) {
     gsize length = 0;
     const gchar *msg_data = g_bytes_get_data(message, &length);
 
@@ -87,7 +88,7 @@ static void server_handle_message(Server *server, SoupWebsocketConnection *conne
             const gchar *answer_sdp = json_object_get_string_member(msg, "sdp");
             // ALOGD("Received answer:\n %s", answer_sdp);
 
-            g_signal_emit(server, signals[SIGNAL_SDP_ANSWER], 0, connection, answer_sdp);
+            g_signal_emit(server, signals[SIGNAL_DATA_CHUNK_DESCRIPTOR], 0, connection, answer_sdp);
         }
     } else {
         ALOGD("Error parsing message: %s", error->message);
@@ -103,21 +104,21 @@ out:
 static void message_cb(SoupWebsocketConnection *connection, gint type, GBytes *message, gpointer user_data) {
     switch (type) {
         case SOUP_WEBSOCKET_DATA_BINARY: {
-            ALOGE("Received unknown binary message, ignoring\n");
+            ALOGD("Received unknown binary message from client %p, ignoring", connection);
             break;
         }
         case SOUP_WEBSOCKET_DATA_TEXT: {
             gsize length = 0;
             const gchar *msg_str = g_bytes_get_data(message, &length);
-            ALOGE("Received text message: %s", msg_str);
+            ALOGD("Received text message from client %p: %s", connection, msg_str);
 
-            const gchar *reply_str = "Some binary data sent from server.";
+            const gchar *reply_str = "OK, prepare to receive the binary data.";
             soup_websocket_connection_send_text(connection, reply_str);
 
-            char test_data_buf[] = "This is some test data";
+            char test_data_buf[] = "This is some test binary data";
             soup_websocket_connection_send_binary(connection, test_data_buf, ARRAY_SIZE(test_data_buf));
 
-            // server_handle_message(MY_SERVER(user_data), connection, message);
+            // server_handle_json_message(MY_SERVER(user_data), connection, message);
         } break;
         default:
             g_assert_not_reached();
@@ -125,8 +126,9 @@ static void message_cb(SoupWebsocketConnection *connection, gint type, GBytes *m
 }
 
 static void server_remove_websocket_connection(Server *server, SoupWebsocketConnection *connection) {
-    ALOGD("Removed websocket connection");
+    ALOGD("Removed websocket connection: %p", connection);
 
+    // Currently, client_id is the same as the connection's pointer
     ClientId client_id = g_object_get_data(G_OBJECT(connection), "client_id");
 
     server->websocket_connections = g_slist_remove(server->websocket_connections, client_id);
@@ -135,13 +137,13 @@ static void server_remove_websocket_connection(Server *server, SoupWebsocketConn
 }
 
 static void closed_cb(SoupWebsocketConnection *connection, gpointer user_data) {
-    ALOGD("Connection closed");
+    ALOGD("Connection closed: %p", connection);
 
     server_remove_websocket_connection(MY_SERVER(user_data), connection);
 }
 
 static void server_add_websocket_connection(Server *server, SoupWebsocketConnection *connection) {
-    ALOGD("Added websocket connection");
+    ALOGD("Added websocket connection: %p", connection);
 
     g_object_ref(connection);
     server->websocket_connections = g_slist_append(server->websocket_connections, connection);
@@ -223,6 +225,8 @@ static void server_dispose(GObject *object) {
 
     soup_server_disconnect(self->soup_server);
     g_clear_object(&self->soup_server);
+
+    ALOGD("Server disconnected");
 }
 
 static void server_class_init(ServerClass *klass) {
@@ -252,15 +256,15 @@ static void server_class_init(ServerClass *klass) {
                                                           1,
                                                           G_TYPE_POINTER);
 
-    signals[SIGNAL_SDP_ANSWER] = g_signal_new("sdp-answer",
-                                              G_OBJECT_CLASS_TYPE(klass),
-                                              G_SIGNAL_RUN_LAST,
-                                              0,
-                                              NULL,
-                                              NULL,
-                                              NULL,
-                                              G_TYPE_NONE,
-                                              2,
-                                              G_TYPE_POINTER,
-                                              G_TYPE_STRING);
+    signals[SIGNAL_DATA_CHUNK_DESCRIPTOR] = g_signal_new("data-chunk-descriptor",
+                                                         G_OBJECT_CLASS_TYPE(klass),
+                                                         G_SIGNAL_RUN_LAST,
+                                                         0,
+                                                         NULL,
+                                                         NULL,
+                                                         NULL,
+                                                         G_TYPE_NONE,
+                                                         2,
+                                                         G_TYPE_POINTER,
+                                                         G_TYPE_STRING);
 }
