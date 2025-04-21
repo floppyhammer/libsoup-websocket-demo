@@ -13,6 +13,7 @@
 #endif
 
 #include "../utils/logger.h"
+#include "../utils/audio_loader.h"
 
 #define DEFAULT_PORT 8080
 
@@ -22,6 +23,9 @@ struct _Server {
     SoupServer *soup_server;
 
     GSList *websocket_connections;
+
+    char *audio_buffer;
+    int audio_buffer_size;
 };
 
 G_DEFINE_TYPE(Server, server, G_TYPE_OBJECT)
@@ -38,7 +42,15 @@ enum {
 static guint signals[N_SIGNALS];
 
 Server *server_new() {
-    return MY_SERVER(g_object_new(TYPE_SERVER, NULL));
+    Server *server = MY_SERVER(g_object_new(TYPE_SERVER, NULL));
+
+    guint8 channels;
+    gint32 sampleRate;
+    guint8 bitsPerSample;
+    server->audio_buffer = load_wav_c("test_audio.wav", &channels, &sampleRate, &bitsPerSample, &server->audio_buffer_size);
+    g_assert(server->audio_buffer);
+
+    return server;
 }
 
 #if !SOUP_CHECK_VERSION(3, 0, 0)

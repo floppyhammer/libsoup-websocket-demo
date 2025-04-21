@@ -3,7 +3,7 @@
 ## Get Dependencies (Linux)
 
 ```sh
-sudo apt install pkg-config
+sudo apt install pkg-config libglib2.0-dev libjson-glib-dev
 ```
 
 Plus some version of libsoup.

@@ -23,7 +23,13 @@ elseif (WIN32)
     set(LIBSOUP_LIBRARIES "${GST_LIB_ROOT}\\soup-3.0.lib")
 endif ()
 
-add_library(ws_demo_common server/server.c client/client.c)
+add_library(ws_demo_common
+        server/server.c
+        utils/audio_loader.cpp
+        client/client.c
+        utils/audio_loader.cpp
+        utils/audio_loader.h
+)
 
 target_link_libraries(
         ws_demo_common
@@ -40,4 +46,5 @@ target_include_directories(
         ${JSONGLIB_INCLUDE_DIRS}
         PUBLIC
         ${GLIB_INCLUDE_DIRS}
+        ../3rd/openal-soft/include
 )
